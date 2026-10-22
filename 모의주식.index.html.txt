@@ -1,0 +1,1407 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>K-HTS 패밀리 모의주식 리그</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+        body {
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+            background-color: #0b0e14;
+            color: #e2e8f0;
+            user-select: none;
+        }
+        /* 한국형 주식 컬러 (상승: 빨강, 하락: 파랑, 보합: 회색) */
+        .kr-up { color: #f04452 !important; }
+        .kr-down { color: #3182f6 !important; }
+        .kr-flat { color: #94a3b8 !important; }
+
+    .bg-kr-up { background-color: #f04452; }
+    .bg-kr-down { background-color: #3182f6; }
+    
+    .bg-kr-up-soft { background-color: rgba(240, 68, 82, 0.12); }
+    .bg-kr-down-soft { background-color: rgba(49, 130, 246, 0.12); }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+</style>
+</head>
+<body class="min-h-screen flex flex-col lg:h-screen lg:overflow-hidden">
+
+<!-- 1. 실시간 코드 개정(업데이트) 감지 알림 배너 (기본 숨김) -->
+<div id="updateBanner" class="hidden bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 text-slate-950 px-4 py-2.5 font-extrabold text-xs sm:text-sm items-center justify-between shadow-lg z-50 shrink-0">
+    <div class="flex items-center gap-2">
+        <i class="fa-solid fa-rocket text-lg animate-bounce"></i>
+        <span>🚀 새로운 프로그램 버전(<span id="newVerText">v2</span>) 업데이트가 배포되었습니다! 최신 기능을 적용하려면 새로고침하세요.</span>
+    </div>
+    <button onclick="applySystemUpdate()" class="bg-slate-950 hover:bg-slate-800 text-amber-300 px-3.5 py-1.5 rounded-lg text-xs font-bold shadow transition shrink-0">
+        확인 및 새로고침
+    </button>
+</div>
+
+<!-- 2. 상단 고정 네비게이션 바 -->
+<header class="bg-[#131722] border-b border-slate-800 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
+    <div class="flex items-center gap-3">
+        <!-- 거래화면일 때만 나타나는 로비 복귀 버튼 -->
+        <button id="backLobbyBtn" onclick="switchScreen('LOBBY')" class="hidden bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold px-3 py-2 rounded-lg border border-slate-700 transition items-center gap-1.5">
+            <i class="fa-solid fa-chevron-left"></i> 기업 선택·순위표로
+        </button>
+
+        <div class="flex items-center gap-2.5 cursor-pointer" onclick="switchScreen('LOBBY')">
+            <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-red-500 to-blue-600 flex items-center justify-center shadow">
+                <i class="fa-solid fa-chart-Simple text-white text-sm"></i>
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <h1 class="font-extrabold text-base sm:text-lg text-white tracking-tight">K-HTS 패밀리 리그</h1>
+                    <span id="sysVerBadge" class="text-[11px] bg-slate-800 text-amber-400 px-2 py-0.5 rounded border border-slate-700 font-mono">v1</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 중앙: 실시간 시계 및 거래 가능 시간(06:00 ~ 23:59) 상태 -->
+    <div class="flex items-center gap-3 bg-[#0b0e14] px-3.5 py-1.5 rounded-xl border border-slate-800 text-xs">
+        <div class="flex items-center gap-1.5">
+            <span id="marketDot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span id="marketStatusLabel" class="font-bold text-emerald-400">장중 (06:00~23:59)</span>
+        </div>
+        <span class="text-slate-700">|</span>
+        <span id="clockDisplay" class="font-mono text-slate-300 font-semibold">00:00:00</span>
+        <span class="text-slate-700 hidden sm:inline">|</span>
+        <label class="hidden sm:flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer" title="새벽 00:00~05:59에도 강제로 시장을 여는 스위치입니다">
+            <input type="checkbox" id="nightOverrideToggle" onchange="toggleNightMarket(this.checked)" class="rounded bg-slate-800 border-slate-700 text-blue-500">
+            <span>야간 강제개장</span>
+        </label>
+    </div>
+
+    <!-- 우측: 접속 계정 상태 & 코드 개정 알림 배포 버튼 -->
+    <div class="flex items-center gap-2">
+        <div id="loggedInUserBox" class="hidden items-center gap-2 bg-[#0b0e14] px-3 py-1.5 rounded-lg border border-slate-800 text-xs">
+            <i class="fa-solid fa-user-astronaut text-blue-400"></i>
+            <span id="navUserName" class="font-bold text-white">게스트</span>
+            <span id="navUserAsset" class="text-amber-400 font-bold ml-1">50,000,000원</span>
+            <button onclick="openAuthModal()" class="ml-2 text-[11px] text-slate-400 hover:text-white underline">계정전환</button>
+        </div>
+        <button id="loginOpenBtn" onclick="openAuthModal()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition">
+            <i class="fa-solid fa-right-to-bracket mr-1"></i> 로그인 / 회원가입
+        </button>
+        <button onclick="openBroadcastModal()" class="bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold px-3 py-2 rounded-lg transition flex items-center gap-1.5" title="코드를 수정한 뒤 다른 가족들의 화면에 새로고침 배너를 띄웁니다">
+            <i class="fa-solid fa-bullhorn"></i>
+            <span class="hidden md:inline">업데이트 배포</span>
+        </button>
+    </div>
+</header>
+
+<!-- 3. 화면 1: 로비 화면 (실시간 다중 사용자 순위표 + 10개 기업 선택 그리드) -->
+<main id="lobbyScreen" class="flex-1 overflow-y-auto p-4 sm:p-6 max-w-7xl w-full mx-auto space-y-6">
+    
+    <!-- 실시간 랭킹 리더보드 섹션 -->
+    <section class="bg-[#131722] border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+            <div>
+                <h2 class="text-base sm:text-lg font-extrabold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-trophy text-amber-400"></i> 실시간 수익률 랭킹 리더보드
+                </h2>
+                <p class="text-xs text-slate-400 mt-0.5">초기자금 5,000만 원 기준 · 클라우드 DB에 모든 참가자의 자산이 실시간 영구 저장됩니다</p>
+            </div>
+            <div class="flex items-center gap-2 text-xs text-slate-400">
+                <span id="dbSyncBadge" class="flex items-center gap-1.5 bg-[#0b0e14] px-3 py-1 rounded-full border border-slate-800">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400"></span> 실시간 클라우드 동기화 중
+                </span>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs sm:text-sm">
+                <thead>
+                    <tr class="bg-[#0b0e14] text-slate-400 border-b border-slate-800">
+                        <th class="py-2.5 px-3 font-bold w-16">순위</th>
+                        <th class="py-2.5 px-3 font-bold">참가자 (닉네임)</th>
+                        <th class="py-2.5 px-3 font-bold text-right">총 평가자산</th>
+                        <th class="py-2.5 px-3 font-bold text-right">보유 현금</th>
+                        <th class="py-2.5 px-3 font-bold text-right">주식 평가금</th>
+                        <th class="py-2.5 px-3 font-bold text-right">누적 수익률</th>
+                    </tr>
+                </thead>
+                <tbody id="leaderboardTableBody" class="divide-y divide-slate-800/60">
+                    <!-- JS 실시간 렌더링 -->
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- 10개 기업 선택 그리드 섹션 -->
+    <section class="space-y-3">
+        <div class="flex items-center justify-between">
+            <div>
+                <h2 class="text-base sm:text-lg font-extrabold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-building text-blue-400"></i> 상장 10대 기업 선택 (클릭 시 거래화면 이동)
+                </h2>
+                <p class="text-xs text-slate-400 mt-0.5">당일 기준가 대비 상한가(+50%) · 하한가(-50%) 제한 및 50:50 대칭 난수 적용</p>
+            </div>
+        </div>
+
+        <div id="companyGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
+            <!-- JS 10개 기업 카드 렌더링 -->
+        </div>
+    </section>
+</main>
+
+<!-- 4. 화면 2: 깔끔한 3단 거래 화면 (오직 1.차트, 2.호가창, 3.거래창만 표시) -->
+<main id="tradeScreen" class="hidden flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2.5 p-2.5 bg-[#07090e] lg:overflow-hidden">
+    
+    <!-- 패널 1: 좌측 차트 영역 (7컬럼) -->
+    <section class="lg:col-span-7 bg-[#131722] rounded-xl border border-slate-800 flex flex-col overflow-hidden min-h-[400px]">
+        <!-- 종목 상단 요약 & 6종 봉 주기 선택 탭 -->
+        <div class="p-3.5 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
+            <div>
+                <div class="flex items-center gap-2">
+                    <span id="trCodeBadge" class="text-xs font-mono bg-slate-800 text-slate-300 px-2 py-0.5 rounded">A0001</span>
+                    <h2 id="trStockTitle" class="text-xl font-black text-white">에이아이반도체</h2>
+                    <span id="trSectorBadge" class="text-xs bg-blue-950/80 text-blue-300 border border-blue-800/50 px-2 py-0.5 rounded-full">반도체·AI</span>
+                    <span id="trLimitBadge" class="hidden text-xs font-extrabold px-2 py-0.5 rounded">상한가</span>
+                </div>
+                <p id="trStockDesc" class="text-xs text-slate-400 mt-1">차세대 신경망 처리장치(NPU) 및 초고속 HBM 메모리 글로벌 리더</p>
+            </div>
+
+            <div class="text-right">
+                <div id="trCurrentPrice" class="text-2xl font-black kr-up">70,000원</div>
+                <div id="trPriceChange" class="text-xs font-bold kr-up">▲ 0 (+0.00%)</div>
+            </div>
+        </div>
+
+        <!-- 상·하한가 안내 및 타임프레임(5분/15분/30분/일/주/월봉) 버튼 바 -->
+        <div class="bg-[#0b0e14] px-3.5 py-2 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div class="flex items-center gap-3">
+                <span><span class="text-slate-400">기준가:</span> <strong id="trBasePrice" class="text-slate-200">70,000</strong></span>
+                <span><span class="text-slate-400">상한가(+50%):</span> <strong id="trUpperLimit" class="kr-up">105,000</strong></span>
+                <span><span class="text-slate-400">하한가(-50%):</span> <strong id="trLowerLimit" class="kr-down">35,000</strong></span>
+            </div>
+
+            <div class="flex items-center gap-1 bg-[#131722] p-1 rounded-lg border border-slate-800">
+                <button onclick="selectTimeframe('5m')" id="tfBtn_5m" class="px-2.5 py-1 rounded text-xs font-bold bg-blue-600 text-white transition">5분봉</button>
+                <button onclick="selectTimeframe('15m')" id="tfBtn_15m" class="px-2.5 py-1 rounded text-xs font-bold text-slate-400 hover:text-white transition">15분봉</button>
+                <button onclick="selectTimeframe('30m')" id="tfBtn_30m" class="px-2.5 py-1 rounded text-xs font-bold text-slate-400 hover:text-white transition">30분봉</button>
+                <button onclick="selectTimeframe('1d')" id="tfBtn_1d" class="px-2.5 py-1 rounded text-xs font-bold text-slate-400 hover:text-white transition">일봉</button>
+                <button onclick="selectTimeframe('1w')" id="tfBtn_1w" class="px-2.5 py-1 rounded text-xs font-bold text-slate-400 hover:text-white transition">주봉</button>
+                <button onclick="selectTimeframe('1M')" id="tfBtn_1M" class="px-2.5 py-1 rounded text-xs font-bold text-slate-400 hover:text-white transition">월봉</button>
+            </div>
+        </div>
+
+        <!-- 캔들스틱 차트 캔버스 -->
+        <div class="flex-1 relative bg-[#0b0e14] w-full overflow-hidden" id="chartContainer">
+            <canvas id="stockCandleCanvas" class="w-full h-full block"></canvas>
+        </div>
+    </section>
+
+    <!-- 패널 2: 중앙 10단계 호가창 영역 (2.5컬럼 -> 2컬럼) -->
+    <section class="lg:col-span-2 bg-[#131722] rounded-xl border border-slate-800 flex flex-col overflow-hidden h-[460px] lg:h-auto">
+        <div class="p-3 border-b border-slate-800 flex items-center justify-between">
+            <span class="font-extrabold text-xs text-white">호가창</span>
+            <span class="text-[11px] text-slate-400">클릭 시 단가입력</span>
+        </div>
+        <div class="grid grid-cols-3 bg-[#0b0e14] py-1.5 px-2 text-[11px] font-bold text-slate-400 border-b border-slate-800 text-center">
+            <div>매도잔량</div>
+            <div>호가</div>
+            <div>매수잔량</div>
+        </div>
+        <div id="orderBookRows" class="flex-1 flex flex-col justify-between divide-y divide-slate-800/40 text-xs overflow-y-auto">
+            <!-- 매도 5호가 + 현재가 + 매수 5호가 -->
+        </div>
+    </section>
+
+    <!-- 패널 3: 우측 매수/매도 주문창 영역 (3컬럼) -->
+    <section class="lg:col-span-3 bg-[#131722] rounded-xl border border-slate-800 flex flex-col justify-between p-4">
+        <div class="space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                <span class="font-extrabold text-sm text-white">주문창</span>
+                <span id="orderUserBadge" class="text-xs font-bold text-blue-400">접속자: 로그인 필요</span>
+            </div>
+
+            <!-- 매수 / 매도 탭 -->
+            <div class="grid grid-cols-2 gap-1.5 bg-[#0b0e14] p-1 rounded-xl border border-slate-800">
+                <button onclick="setTradeSide('BUY')" id="sideBtnBuy" class="py-2.5 rounded-lg font-extrabold text-xs bg-kr-up text-white transition">매수 (Buy)</button>
+                <button onclick="setTradeSide('SELL')" id="sideBtnSell" class="py-2.5 rounded-lg font-extrabold text-xs text-slate-400 hover:text-white transition">매도 (Sell)</button>
+            </div>
+
+            <!-- 주문 단가 -->
+            <div class="space-y-1.5 text-xs">
+                <div class="flex justify-between text-slate-400 font-semibold">
+                    <span>주문 단가 (원)</span>
+                    <button onclick="resetPriceToCurrent()" class="text-blue-400 hover:underline">현재가로 설정</button>
+                </div>
+                <div class="flex items-center">
+                    <button onclick="stepOrderPrice(-1)" class="w-10 h-10 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-l-lg border border-slate-700">-</button>
+                    <input type="number" id="inputOrderPrice" oninput="calcOrderTotal()" class="w-full h-10 bg-[#0b0e14] border-y border-slate-700 text-right px-3 font-extrabold text-white text-sm focus:outline-none">
+                    <button onclick="stepOrderPrice(1)" class="w-10 h-10 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-r-lg border border-slate-700">+</button>
+                </div>
+            </div>
+
+            <!-- 주문 수량 -->
+            <div class="space-y-1.5 text-xs">
+                <div class="flex justify-between text-slate-400 font-semibold">
+                    <span>주문 수량 (주)</span>
+                    <span id="availQtyHint" class="text-slate-300">최대 가능: 0주</span>
+                </div>
+                <div class="flex items-center">
+                    <button onclick="stepOrderQty(-1)" class="w-10 h-10 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-l-lg border border-slate-700">-</button>
+                    <input type="number" id="inputOrderQty" value="1" min="1" oninput="calcOrderTotal()" class="w-full h-10 bg-[#0b0e14] border-y border-slate-700 text-right px-3 font-extrabold text-white text-sm focus:outline-none">
+                    <button onclick="stepOrderQty(1)" class="w-10 h-10 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-r-lg border border-slate-700">+</button>
+                </div>
+                <div class="grid grid-cols-4 gap-1.5 pt-1">
+                    <button onclick="fillQtyByRatio(0.1)" class="py-1.5 bg-[#0b0e14] hover:bg-slate-800 text-slate-300 rounded border border-slate-800 font-bold">10%</button>
+                    <button onclick="fillQtyByRatio(0.25)" class="py-1.5 bg-[#0b0e14] hover:bg-slate-800 text-slate-300 rounded border border-slate-800 font-bold">25%</button>
+                    <button onclick="fillQtyByRatio(0.5)" class="py-1.5 bg-[#0b0e14] hover:bg-slate-800 text-slate-300 rounded border border-slate-800 font-bold">50%</button>
+                    <button onclick="fillQtyByRatio(1.0)" class="py-1.5 bg-[#0b0e14] hover:bg-slate-800 text-amber-400 rounded border border-slate-800 font-bold">최대</button>
+                </div>
+            </div>
+
+            <!-- 주문 총액 -->
+            <div class="flex items-center justify-between pt-3 border-t border-slate-800 text-xs">
+                <span class="text-slate-400 font-semibold">주문 총액</span>
+                <span id="orderTotalText" class="text-lg font-black text-white">0원</span>
+            </div>
+        </div>
+
+        <!-- 내 보유 현황 요약 및 주문 실행 버튼 -->
+        <div class="space-y-3 pt-4">
+            <div class="bg-[#0b0e14] p-3.5 rounded-xl border border-slate-800 space-y-2 text-xs">
+                <div class="flex justify-between">
+                    <span class="text-slate-400">주문가능 현금</span>
+                    <span id="myCashText" class="font-bold text-white">0원</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-400">이 종목 보유수량</span>
+                    <span id="myStockQtyText" class="font-bold text-white">0주</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-400">내 매수 평단가</span>
+                    <span id="myStockAvgText" class="font-bold text-slate-200">0원</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-400">이 종목 수익률</span>
+                    <span id="myStockRateText" class="font-extrabold kr-flat">0.00%</span>
+                </div>
+            </div>
+
+            <button onclick="submitTradeOrder()" id="mainOrderBtn" class="w-full py-3.5 rounded-xl bg-kr-up hover:opacity-95 text-white font-black text-sm shadow-lg transition">
+                매수 주문 체결하기
+            </button>
+        </div>
+    </section>
+</main>
+
+<!-- 5. 회원가입 / 로그인 모달 -->
+<div id="authModal" class="fixed inset-0 bg-black/80 z-50 hidden items-center justify-center p-4">
+    <div class="bg-[#131722] border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5">
+        <div class="flex items-center justify-between">
+            <h3 class="text-lg font-extrabold text-white flex items-center gap-2">
+                <i class="fa-solid fa-user-shield text-blue-400"></i> 참가자 로그인 / 새 계정 만들기
+            </h3>
+            <button onclick="closeAuthModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+        <p class="text-xs text-slate-300 leading-relaxed">
+            나, 아빠, 엄마, 친구 등 원하는 <strong>닉네임과 비밀번호</strong>를 입력하세요.<br>
+            처음 입력하는 닉네임이면 <strong>자동으로 초기자금 5,000만 원 계정이 생성</strong>되며, 기존 닉네임이면 저장된 내 계좌를 불러옵니다.
+        </p>
+        <div class="space-y-3 text-xs">
+            <div>
+                <label class="text-slate-400 font-bold block mb-1">닉네임 (예: 나, 아빠, 홍길동)</label>
+                <input type="text" id="authNickname" placeholder="닉네임 입력" class="w-full bg-[#0b0e14] border border-slate-700 rounded-lg px-3.5 py-2.5 text-white font-bold text-sm focus:outline-none focus:border-blue-500">
+            </div>
+            <div>
+                <label class="text-slate-400 font-bold block mb-1">비밀번호 (간단한 숫자/문자)</label>
+                <input type="password" id="authPassword" placeholder="비밀번호 입력" class="w-full bg-[#0b0e14] border border-slate-700 rounded-lg px-3.5 py-2.5 text-white font-bold text-sm focus:outline-none focus:border-blue-500">
+            </div>
+        </div>
+
+        <!-- 빠른 선택 도우미 (등록된 유저가 있을 때 표시) -->
+        <div id="registeredUsersQuickList" class="space-y-1.5"></div>
+
+        <button onclick="handleLoginOrRegister()" class="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold rounded-xl text-sm shadow-lg transition">
+            계정 접속하기 (자동 가입/로그인)
+        </button>
+    </div>
+</div>
+
+<!-- 6. 코드 개정(업데이트) 배포 확인 모달 -->
+<div id="broadcastModal" class="fixed inset-0 bg-black/80 z-50 hidden items-center justify-center p-4">
+    <div class="bg-[#131722] border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+        <div class="flex items-center justify-between">
+            <h3 class="text-base font-extrabold text-white flex items-center gap-2">
+                <i class="fa-solid fa-bullhorn text-amber-400"></i> 전체 접속자에게 업데이트 알림 띄우기
+            </h3>
+            <button onclick="closeBroadcastModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <p class="text-xs text-slate-300 leading-relaxed">
+            코드를 개정한 뒤 아래 버튼을 누르면 데이터베이스의 프로그램 버전 번호가 올라가며, 현재 접속 중인 <strong>아빠나 다른 참가자의 화면 상단에 즉시 [새로고침 알림 배너]</strong>가 자동으로 뜹니다.
+        </p>
+        <div>
+            <label class="text-xs text-slate-400 font-bold block mb-1">업데이트 안내 메모 (선택)</label>
+            <input type="text" id="updateNoteInput" value="새로운 기능 및 차트 개선이 반영되었습니다!" class="w-full bg-[#0b0e14] border border-slate-700 rounded-lg px-3 py-2 text-xs text-white">
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+            <button onclick="closeBroadcastModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-bold">취소</button>
+            <button onclick="triggerBroadcastUpdate()" class="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold">지금 업데이트 알림 발송</button>
+        </div>
+    </div>
+</div>
+
+<!-- 우측 하단 알림 토스트 컨테이너 -->
+<div id="toastWrap" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-xs w-full pointer-events-none"></div>
+
+<!-- Firebase SDK 및 애플리케이션 스크립트 -->
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    /***********************************************************************
+     * 1. 10개 기업 초기 설정 (A~J 이니셜 매칭 + 재미있는 기업명 + ±50% 상하한가)
+     ***********************************************************************/
+    const INITIAL_CASH = 50000000; // 초기 가입 자본금 5,000만 원
+    const TIMEFRAMES = ['5m', '15m', '30m', '1d', '1w', '1M'];
+
+    const COMPANY_META = [
+        { id: 'A', code: 'A0001', name: '에이아이반도체', sector: '반도체·AI', basePrice: 70000, desc: '차세대 신경망 처리장치(NPU) 및 초고속 HBM 메모리 글로벌 리더' },
+        { id: 'B', code: 'B0002', name: '번개배터리', sector: '2차전지', basePrice: 120000, desc: '10분 초급속 충전 전고체 배터리 셀 및 양극재 핵심 특허 보유' },
+        { id: 'C', code: 'C0003', name: '튼튼셀바이오', sector: '바이오·헬스', basePrice: 45000, desc: '면역 항암 신약 글로벌 임상 3상 및 유전자 치료제 선도 기업' },
+        { id: 'D', code: 'D0004', name: '드림모빌리티', sector: '자율주행·모빌리티', basePrice: 85000, desc: '완전 자율주행 로봇택시 및 도심항공교통(UAM) 완성기 제조사' },
+        { id: 'E', code: 'E0005', name: '에브리톡', sector: 'IT·플랫폼', basePrice: 55000, desc: '국민 메신저 생태계 기반 AI 검색·핀테크·커머스 슈퍼앱 플랫폼' },
+        { id: 'F', code: 'F0006', name: '퓨처로보틱스', sector: '로보틱스', basePrice: 32000, desc: '가정용 가사 도우미 휴머노이드 및 스마트팩토리 협동로봇 전문' },
+        { id: 'G', code: 'G0007', name: '글로벌스타엔터', sector: '엔터테인먼트', basePrice: 64000, desc: '빌보드 1위 K-POP 아티스트 IP 및 글로벌 팬덤 플랫폼 운영사' },
+        { id: 'H', code: 'H0008', name: '헤라클레스방산', sector: '우주·방위산업', basePrice: 95000, desc: '초음속 위성 발사체 및 차세대 한국형 첨단 방위체계 종합 기업' },
+        { id: 'I', code: 'I0009', name: '이노그린에너지', sector: '친환경에너지', basePrice: 28000, desc: '고효율 해상풍력 발전 및 그린수소 에너지 플랜트 솔루션 기업' },
+        { id: 'J', code: 'J0010', name: '제일금융지주', sector: '금융·지주', basePrice: 48000, desc: '고배당 주주환원 밸류업을 선도하는 국내 최대 종합 금융그룹' }
+    ];
+
+    // 한국거래소 호가 단위(Tick) 계산
+    function getTickSize(price) {
+        if (price < 2000) return 1;
+        if (price < 5000) return 5;
+        if (price < 20000) return 10;
+        if (price < 50000) return 50;
+        if (price < 200000) return 100;
+        if (price < 500000) return 500;
+        return 1000;
+    }
+
+    function alignToTick(price) {
+        const tick = getTickSize(price);
+        return Math.max(tick, Math.round(price / tick) * tick);
+    }
+
+    // 상한가(+50%) 및 하한가(-50%) 계산
+    function getPriceLimits(basePrice) {
+        return {
+            upper: alignToTick(basePrice * 1.5),
+            lower: alignToTick(basePrice * 0.5)
+        };
+    }
+
+    // 초기 대칭형 캔들 생성 (50:50 확률 + 상하한가 범위 준수)
+    function createInitialCandles(basePrice, count) {
+        const candles = [];
+        const limits = getPriceLimits(basePrice);
+        let price = basePrice;
+
+        for (let i = 0; i < count; i++) {
+            const open = price;
+            let high = open;
+            let low = open;
+
+            for (let step = 0; step < 6; step++) {
+                const tick = getTickSize(price);
+                const dir = Math.random() < 0.5 ? 1 : -1; // 정확히 50:50 대칭 확률
+                let nextP = price + dir * tick;
+                if (nextP > limits.upper) nextP = limits.upper;
+                if (nextP < limits.lower) nextP = limits.lower;
+                price = nextP;
+                if (price > high) high = price;
+                if (price < low) low = price;
+            }
+            candles.push({ open, high, low, close: price });
+        }
+        return candles;
+    }
+
+    // 호가창 10단계 생성 (상·하한가 초과 호가는 잔량 0 처리)
+    function buildOrderBook(price, basePrice) {
+        const tick = getTickSize(price);
+        const limits = getPriceLimits(basePrice);
+        const asks = [];
+        const bids = [];
+
+        for (let i = 5; i >= 1; i--) {
+            const p = price + i * tick;
+            asks.push({
+                price: p,
+                qty: p > limits.upper ? 0 : Math.floor(Math.random() * 450) + 40
+            });
+        }
+        for (let i = 1; i <= 5; i++) {
+            const p = Math.max(tick, price - i * tick);
+            bids.push({
+                price: p,
+                qty: p < limits.lower ? 0 : Math.floor(Math.random() * 450) + 40
+            });
+        }
+        return { asks, bids };
+    }
+
+    /***********************************************************************
+     * 2. 전역 상태 관리
+     ***********************************************************************/
+    let db = null;
+    let auth = null;
+    let isFirebaseReady = false;
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'k-hts-family-stock-app';
+
+    let stocks = {};
+    let allAccounts = {}; // { nickname: { nickname, password, cash, holdings: { A: {qty, avgPrice} } } }
+    let currentAccountKey = null; // 현재 로그인한 닉네임
+
+    let currentScreen = 'LOBBY'; // 'LOBBY' | 'TRADE'
+    let selectedStockId = 'A';
+    let selectedTimeframe = '5m';
+    let currentTradeSide = 'BUY';
+
+    let localSystemVersion = null;
+    let nightMarketOverride = false;
+    let tickCounter = 0;
+
+    // 초기 로컬 주가 구조 세팅
+    function initLocalStockState() {
+        COMPANY_META.forEach(m => {
+            const candles = {};
+            TIMEFRAMES.forEach(tf => {
+                candles[tf] = createInitialCandles(m.basePrice, 45);
+            });
+            const curPrice = candles['5m'][candles['5m'].length - 1].close;
+            stocks[m.id] = {
+                ...m,
+                price: curPrice,
+                prevClose: m.basePrice,
+                candles: candles,
+                orderBook: buildOrderBook(curPrice, m.basePrice)
+            };
+        });
+    }
+
+    /***********************************************************************
+     * 3. 파이어베이스(Firestore) 초기화 및 실시간 동기화 (RULE 1, 2, 3 준수)
+     ***********************************************************************/
+    async function initCloudDatabase() {
+        try {
+            if (typeof __firebase_config === 'undefined' || !__firebase_config) {
+                console.warn("Firebase 설정이 없어 세션 메모리 모드로 동작합니다.");
+                return;
+            }
+            const firebaseConfig = JSON.parse(__firebase_config);
+            const app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+
+            // RULE 3: Auth Before Queries
+            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                await signInWithCustomToken(auth, __initial_auth_token);
+            } else {
+                await signInAnonymously(auth);
+            }
+
+            if (!auth.currentUser) return;
+            isFirebaseReady = true;
+
+            // 1) 참가자 계좌 컬렉션 실시간 구독
+            const accountsCol = collection(db, 'artifacts', appId, 'public', 'data', 'accounts');
+            onSnapshot(accountsCol, (snap) => {
+                snap.forEach(docSnap => {
+                    const data = docSnap.data();
+                    if (data && data.nickname) {
+                        allAccounts[data.nickname] = {
+                            nickname: data.nickname,
+                            password: data.password || '',
+                            cash: Number(data.cash ?? INITIAL_CASH),
+                            holdings: typeof data.holdings === 'string' ? JSON.parse(data.holdings) : (data.holdings || {})
+                        };
+                    }
+                });
+                renderNavbarAccount();
+                renderLeaderboard();
+                renderQuickUserButtons();
+                if (currentScreen === 'TRADE') renderTradeOrderInfo();
+            }, (err) => console.error("Accounts sync error:", err));
+
+            // 2) 시장 주가 상태 문서 실시간 구독
+            const marketDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'market', 'state');
+            const marketSnap = await getDoc(marketDocRef);
+            if (!marketSnap.exists()) {
+                await saveMarketStateToCloud();
+            }
+
+            onSnapshot(marketDocRef, (docSnap) => {
+                if (!docSnap.exists()) return;
+                const data = docSnap.data();
+                if (data && data.stocksJson) {
+                    try {
+                        const parsed = JSON.parse(data.stocksJson);
+                        Object.keys(parsed).forEach(id => {
+                            if (stocks[id]) {
+                                stocks[id].price = parsed[id].price;
+                                stocks[id].prevClose = parsed[id].prevClose;
+                                stocks[id].candles = parsed[id].candles;
+                                stocks[id].orderBook = buildOrderBook(stocks[id].price, stocks[id].prevClose);
+                            }
+                        });
+                        refreshAllViews();
+                    } catch (e) {
+                        console.error("Market parse error:", e);
+                    }
+                }
+            }, (err) => console.error("Market sync error:", err));
+
+            // 3) 시스템 버전(코드 개정 알림) 실시간 구독
+            const configDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'system', 'config');
+            const configSnap = await getDoc(configDocRef);
+            if (!configSnap.exists()) {
+                await setDoc(configDocRef, { version: 1, note: '최초 배포', updatedAt: Date.now() });
+            }
+
+            onSnapshot(configDocRef, (docSnap) => {
+                if (!docSnap.exists()) return;
+                const data = docSnap.data();
+                const remoteVer = Number(data.version || 1);
+                document.getElementById('sysVerBadge').textContent = `v${remoteVer}`;
+
+                if (localSystemVersion === null) {
+                    localSystemVersion = remoteVer;
+                } else if (remoteVer > localSystemVersion) {
+                    // 버전이 올라가면 즉시 상단 업데이트 배너 표시
+                    const banner = document.getElementById('updateBanner');
+                    document.getElementById('newVerText').textContent = `v${remoteVer} - ${data.note || '최신 업데이트'}`;
+                    banner.classList.remove('hidden');
+                    banner.classList.add('flex');
+                }
+            }, (err) => console.error("Config sync error:", err));
+
+        } catch (err) {
+            console.error("Cloud DB Init Error:", err);
+        }
+    }
+
+    // 계좌 정보를 클라우드 DB에 저장
+    async function saveAccountToCloud(nickname) {
+        const acc = allAccounts[nickname];
+        if (!acc || !isFirebaseReady || !auth.currentUser) return;
+        try {
+            const ref = doc(db, 'artifacts', appId, 'public', 'data', 'accounts', nickname);
+            await setDoc(ref, {
+                nickname: acc.nickname,
+                password: acc.password,
+                cash: acc.cash,
+                holdings: JSON.stringify(acc.holdings),
+                updatedAt: Date.now()
+            });
+        } catch (e) {
+            console.error("Save account error:", e);
+        }
+    }
+
+    // 시장 주가 및 캔들 데이터를 클라우드 DB에 저장
+    async function saveMarketStateToCloud() {
+        if (!isFirebaseReady || !auth.currentUser) return;
+        try {
+            const payload = {};
+            Object.keys(stocks).forEach(id => {
+                payload[id] = {
+                    price: stocks[id].price,
+                    prevClose: stocks[id].prevClose,
+                    candles: stocks[id].candles
+                };
+            });
+            const ref = doc(db, 'artifacts', appId, 'public', 'data', 'market', 'state');
+            await setDoc(ref, {
+                stocksJson: JSON.stringify(payload),
+                updatedAt: Date.now()
+            });
+        } catch (e) {
+            console.error("Save market error:", e);
+        }
+    }
+
+    /***********************************************************************
+     * 4. 거래 시간 체크 (06:00 ~ 23:59) 및 50:50 대칭 시뮬레이션 루프
+     ***********************************************************************/
+    function isMarketOpenNow() {
+        if (nightMarketOverride) return true;
+        const now = new Date();
+        const hour = now.getHours();
+        // 06:00 이상 ~ 23:59 이하 거래 가능 (00:00 ~ 05:59 장 마감)
+        return hour >= 6 && hour <= 23;
+    }
+
+    function updateClockAndMarketStatus() {
+        const now = new Date();
+        const timeStr = now.toTimeString().split(' ')[0];
+        document.getElementById('clockDisplay').textContent = timeStr;
+
+        const open = isMarketOpenNow();
+        const dot = document.getElementById('marketDot');
+        const label = document.getElementById('marketStatusLabel');
+
+        if (open) {
+            dot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
+            label.className = 'font-bold text-emerald-400';
+            label.textContent = nightMarketOverride ? '야간 강제개장 중' : '장중 거래가능 (06:00~23:59)';
+        } else {
+            dot.className = 'w-2 h-2 rounded-full bg-rose-500';
+            label.className = 'font-bold text-rose-400';
+            label.textContent = '장 마감 (06:00 개장)';
+        }
+    }
+
+    // 1초 주기 대칭 시뮬레이션
+    function stepMarketSimulation() {
+        updateClockAndMarketStatus();
+        if (!isMarketOpenNow()) return;
+
+        tickCounter++;
+        Object.values(stocks).forEach(st => {
+            const tick = getTickSize(st.price);
+            const limits = getPriceLimits(st.prevClose);
+
+            // 정확히 대칭 확률: 35% +1틱 상승, 35% -1틱 하락, 30% 보합
+            const r = Math.random();
+            let delta = 0;
+            if (r < 0.35) delta = 1;
+            else if (r < 0.70) delta = -1;
+
+            let nextPrice = st.price + delta * tick;
+            // ±50% 상·하한가 엄격 제한
+            if (nextPrice > limits.upper) nextPrice = limits.upper;
+            if (nextPrice < limits.lower) nextPrice = limits.lower;
+
+            st.price = nextPrice;
+
+            // 모든 타임프레임의 현재 봉 갱신
+            TIMEFRAMES.forEach(tf => {
+                const list = st.candles[tf];
+                const last = list[list.length - 1];
+                last.close = nextPrice;
+                if (nextPrice > last.high) last.high = nextPrice;
+                if (nextPrice < last.low) last.low = nextPrice;
+            });
+
+            // 10초마다 5분봉 새 캔들 추가
+            if (tickCounter % 10 === 0) {
+                const c5 = st.candles['5m'];
+                c5.push({ open: nextPrice, high: nextPrice, low: nextPrice, close: nextPrice });
+                if (c5.length > 50) c5.shift();
+            }
+
+            st.orderBook = buildOrderBook(nextPrice, st.prevClose);
+        });
+
+        refreshAllViews();
+
+        // 4초마다 클라우드에 시장 상태 백업
+        if (tickCounter % 4 === 0) {
+            saveMarketStateToCloud();
+        }
+    }
+
+    /***********************************************************************
+     * 5. 화면 렌더링 (로비 리더보드, 10개 기업 카드, 3단 거래화면)
+     ***********************************************************************/
+    function getAccountTotalValue(acc) {
+        let stockEval = 0;
+        Object.entries(acc.holdings || {}).forEach(([sid, h]) => {
+            if (h && h.qty > 0 && stocks[sid]) {
+                stockEval += h.qty * stocks[sid].price;
+            }
+        });
+        return {
+            cash: acc.cash,
+            stockEval,
+            total: acc.cash + stockEval
+        };
+    }
+
+    function renderNavbarAccount() {
+        const box = document.getElementById('loggedInUserBox');
+        const loginBtn = document.getElementById('loginOpenBtn');
+        const badge = document.getElementById('orderUserBadge');
+
+        if (currentAccountKey && allAccounts[currentAccountKey]) {
+            const acc = allAccounts[currentAccountKey];
+            const { total } = getAccountTotalValue(acc);
+            box.classList.remove('hidden');
+            box.classList.add('flex');
+            loginBtn.classList.add('hidden');
+            document.getElementById('navUserName').textContent = acc.nickname;
+            document.getElementById('navUserAsset').textContent = `${total.toLocaleString()}원`;
+            badge.textContent = `접속자: ${acc.nickname}`;
+        } else {
+            box.classList.add('hidden');
+            box.classList.remove('flex');
+            loginBtn.classList.remove('hidden');
+            badge.textContent = '접속자: 로그인 필요';
+        }
+    }
+
+    function renderLeaderboard() {
+        const tbody = document.getElementById('leaderboardTableBody');
+        const list = Object.values(allAccounts).map(acc => {
+            const { cash, stockEval, total } = getAccountTotalValue(acc);
+            const rate = ((total - INITIAL_CASH) / INITIAL_CASH) * 100;
+            return { nickname: acc.nickname, cash, stockEval, total, rate };
+        }).sort((a, b) => b.total - a.total);
+
+        if (list.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="py-8 text-center text-slate-400">
+                        아직 등록된 참가자가 없습니다. 우측 상단 <strong>[로그인 / 회원가입]</strong> 버튼을 눌러 첫 계정을 만들어 보세요!
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = list.map((item, idx) => {
+            const rank = idx + 1;
+            const isMe = item.nickname === currentAccountKey;
+            const colorClass = item.rate > 0 ? 'kr-up' : (item.rate < 0 ? 'kr-down' : 'kr-flat');
+            const sign = item.rate > 0 ? '+' : '';
+
+            let badgeHtml = `<span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-bold text-xs">${rank}위</span>`;
+            if (rank === 1) badgeHtml = `<span class="px-2 py-0.5 rounded bg-amber-400 text-slate-950 font-black text-xs">🥇 1위</span>`;
+            else if (rank === 2) badgeHtml = `<span class="px-2 py-0.5 rounded bg-slate-300 text-slate-950 font-extrabold text-xs">🥈 2위</span>`;
+            else if (rank === 3) badgeHtml = `<span class="px-2 py-0.5 rounded bg-amber-700 text-white font-extrabold text-xs">🥉 3위</span>`;
+
+            return `
+                <tr class="hover:bg-slate-800/40 transition ${isMe ? 'bg-blue-950/30' : ''}">
+                    <td class="py-3 px-3">${badgeHtml}</td>
+                    <td class="py-3 px-3 font-extrabold text-white">
+                        ${item.nickname}
+                        ${isMe ? '<span class="ml-1.5 text-[11px] bg-blue-600 text-white px-1.5 py-0.5 rounded">나</span>' : ''}
+                    </td>
+                    <td class="py-3 px-3 text-right font-black text-white">${item.total.toLocaleString()}원</td>
+                    <td class="py-3 px-3 text-right text-slate-300">${item.cash.toLocaleString()}원</td>
+                    <td class="py-3 px-3 text-right text-slate-300">${item.stockEval.toLocaleString()}원</td>
+                    <td class="py-3 px-3 text-right font-extrabold ${colorClass}">${sign}${item.rate.toFixed(2)}%</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function renderCompanyGrid() {
+        const grid = document.getElementById('companyGrid');
+        grid.innerHTML = Object.values(stocks).map(st => {
+            const diff = st.price - st.prevClose;
+            const rate = (diff / st.prevClose) * 100;
+            const colorClass = diff > 0 ? 'kr-up' : (diff < 0 ? 'kr-down' : 'kr-flat');
+            const arrow = diff > 0 ? '▲' : (diff < 0 ? '▼' : '-');
+            const limits = getPriceLimits(st.prevClose);
+
+            let limitTag = '';
+            if (st.price >= limits.upper) {
+                limitTag = `<span class="text-[10px] bg-red-600 text-white font-black px-1.5 py-0.5 rounded">상한가</span>`;
+            } else if (st.price <= limits.lower) {
+                limitTag = `<span class="text-[10px] bg-blue-600 text-white font-black px-1.5 py-0.5 rounded">하한가</span>`;
+            }
+
+            // 현재 로그인 유저의 보유 수량 표시
+            const myHoldQty = currentAccountKey && allAccounts[currentAccountKey]?.holdings?.[st.id]?.qty || 0;
+
+            return `
+                <div onclick="openCompanyTrade('${st.id}')" class="bg-[#131722] hover:bg-slate-800/80 border border-slate-800 hover:border-blue-500/60 rounded-xl p-4 cursor-pointer transition shadow-md flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between gap-1 mb-1">
+                            <span class="text-[11px] font-mono text-slate-400">${st.id} · ${st.sector}</span>
+                            ${myHoldQty > 0 ? `<span class="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded font-bold">${myHoldQty}주 보유</span>` : limitTag}
+                        </div>
+                        <h3 class="font-extrabold text-base text-white">${st.name}</h3>
+                        <p class="text-[11px] text-slate-400 line-clamp-2 mt-1">${st.desc}</p>
+                    </div>
+                    <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-baseline justify-between">
+                        <span class="text-lg font-black ${colorClass}">${st.price.toLocaleString()}원</span>
+                        <span class="text-xs font-bold ${colorClass}">${arrow} ${rate >= 0 ? '+' : ''}${rate.toFixed(2)}%</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function renderTradeView() {
+        if (currentScreen !== 'TRADE') return;
+        const st = stocks[selectedStockId];
+        const diff = st.price - st.prevClose;
+        const rate = (diff / st.prevClose) * 100;
+        const colorClass = diff > 0 ? 'kr-up' : (diff < 0 ? 'kr-down' : 'kr-flat');
+        const arrow = diff > 0 ? '▲' : (diff < 0 ? '▼' : '-');
+        const limits = getPriceLimits(st.prevClose);
+
+        document.getElementById('trCodeBadge').textContent = st.code;
+        document.getElementById('trStockTitle').textContent = st.name;
+        document.getElementById('trSectorBadge').textContent = st.sector;
+        document.getElementById('trStockDesc').textContent = st.desc;
+
+        const limitBadge = document.getElementById('trLimitBadge');
+        if (st.price >= limits.upper) {
+            limitBadge.className = 'text-xs font-extrabold px-2 py-0.5 rounded bg-red-600 text-white';
+            limitBadge.textContent = '상한가 (+50%)';
+        } else if (st.price <= limits.lower) {
+            limitBadge.className = 'text-xs font-extrabold px-2 py-0.5 rounded bg-blue-600 text-white';
+            limitBadge.textContent = '하한가 (-50%)';
+        } else {
+            limitBadge.className = 'hidden';
+        }
+
+        const pEl = document.getElementById('trCurrentPrice');
+        pEl.textContent = `${st.price.toLocaleString()}원`;
+        pEl.className = `text-2xl font-black ${colorClass}`;
+
+        const cEl = document.getElementById('trPriceChange');
+        cEl.textContent = `${arrow} ${Math.abs(diff).toLocaleString()} (${rate >= 0 ? '+' : ''}${rate.toFixed(2)}%)`;
+        cEl.className = `text-xs font-bold ${colorClass}`;
+
+        document.getElementById('trBasePrice').textContent = st.prevClose.toLocaleString();
+        document.getElementById('trUpperLimit').textContent = limits.upper.toLocaleString();
+        document.getElementById('trLowerLimit').textContent = limits.lower.toLocaleString();
+
+        drawCandleChart();
+        renderOrderBook();
+        renderTradeOrderInfo();
+    }
+
+    function drawCandleChart() {
+        const canvas = document.getElementById('stockCandleCanvas');
+        const container = document.getElementById('chartContainer');
+        if (!canvas || !container || currentScreen !== 'TRADE') return;
+
+        const dpr = window.devicePixelRatio || 1;
+        const rect = container.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+
+        const ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+
+        const W = rect.width;
+        const H = rect.height;
+        ctx.fillStyle = '#0b0e14';
+        ctx.fillRect(0, 0, W, H);
+
+        const st = stocks[selectedStockId];
+        const candles = st.candles[selectedTimeframe] || [];
+        if (candles.length === 0) return;
+
+        const padTop = 24, padBottom = 24, padLeft = 16, padRight = 72;
+        const plotW = W - padLeft - padRight;
+        const plotH = H - padTop - padBottom;
+
+        let minP = Infinity, maxP = -Infinity;
+        candles.forEach(c => {
+            if (c.low < minP) minP = c.low;
+            if (c.high > maxP) maxP = c.high;
+        });
+        const margin = Math.max((maxP - minP) * 0.12, getTickSize(st.price) * 4);
+        minP = Math.max(0, minP - margin);
+        maxP += margin;
+
+        // 배경 수평 그리드 및 우측 가격 레이블
+        ctx.strokeStyle = '#1e293b';
+        ctx.fillStyle = '#64748b';
+        ctx.font = '11px Pretendard, sans-serif';
+        ctx.textAlign = 'left';
+
+        for (let i = 0; i <= 4; i++) {
+            const y = padTop + (plotH / 4) * i;
+            const pVal = Math.round(maxP - ((maxP - minP) / 4) * i);
+            ctx.beginPath();
+            ctx.moveTo(padLeft, y);
+            ctx.lineTo(padLeft + plotW, y);
+            ctx.stroke();
+            ctx.fillText(pVal.toLocaleString(), padLeft + plotW + 8, y + 4);
+        }
+
+        // 캔들 그리기
+        const stepW = plotW / candles.length;
+        const bodyW = Math.max(3, Math.min(16, stepW * 0.65));
+
+        candles.forEach((c, idx) => {
+            const cx = padLeft + idx * stepW + stepW / 2;
+            const yHigh = padTop + ((maxP - c.high) / (maxP - minP)) * plotH;
+            const yLow = padTop + ((maxP - c.low) / (maxP - minP)) * plotH;
+            const yOpen = padTop + ((maxP - c.open) / (maxP - minP)) * plotH;
+            const yClose = padTop + ((maxP - c.close) / (maxP - minP)) * plotH;
+
+            const isUp = c.close >= c.open;
+            const color = isUp ? '#f04452' : '#3182f6';
+
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.moveTo(cx, yHigh);
+            ctx.lineTo(cx, yLow);
+            ctx.stroke();
+
+            ctx.fillStyle = color;
+            const topY = Math.min(yOpen, yClose);
+            const height = Math.max(2, Math.abs(yClose - yOpen));
+            ctx.fillRect(cx - bodyW / 2, topY, bodyW, height);
+        });
+    }
+
+    function renderOrderBook() {
+        const st = stocks[selectedStockId];
+        const ob = st.orderBook;
+        const container = document.getElementById('orderBookRows');
+        let html = '';
+
+        // 매도 5호가
+        ob.asks.forEach(a => {
+            const rate = ((a.price - st.prevClose) / st.prevClose) * 100;
+            html += `
+                <div onclick="setOrderPriceFromBook(${a.price})" class="grid grid-cols-3 items-center py-1.5 px-2 bg-kr-down-soft hover:bg-slate-800 cursor-pointer transition">
+                    <div class="kr-down font-semibold">${a.qty.toLocaleString()}</div>
+                    <div class="text-center">
+                        <span class="font-extrabold kr-down block">${a.price.toLocaleString()}</span>
+                        <span class="text-[10px] text-slate-400">${rate >= 0 ? '+' : ''}${rate.toFixed(1)}%</span>
+                    </div>
+                    <div></div>
+                </div>
+            `;
+        });
+
+        // 현재가 중심선
+        const curDiff = st.price - st.prevClose;
+        const curColor = curDiff > 0 ? 'kr-up' : (curDiff < 0 ? 'kr-down' : 'kr-flat');
+        html += `
+            <div onclick="setOrderPriceFromBook(${st.price})" class="grid grid-cols-3 items-center py-2 px-2 bg-slate-900 border-y border-slate-700 cursor-pointer">
+                <div class="text-[10px] text-slate-400">현재가</div>
+                <div class="text-center font-black text-sm ${curColor}">${st.price.toLocaleString()}원</div>
+                <div></div>
+            </div>
+        `;
+
+        // 매수 5호가
+        ob.bids.forEach(b => {
+            const rate = ((b.price - st.prevClose) / st.prevClose) * 100;
+            html += `
+                <div onclick="setOrderPriceFromBook(${b.price})" class="grid grid-cols-3 items-center py-1.5 px-2 bg-kr-up-soft hover:bg-slate-800 cursor-pointer transition">
+                    <div></div>
+                    <div class="text-center">
+                        <span class="font-extrabold kr-up block">${b.price.toLocaleString()}</span>
+                        <span class="text-[10px] text-slate-400">${rate >= 0 ? '+' : ''}${rate.toFixed(1)}%</span>
+                    </div>
+                    <div class="text-right kr-up font-semibold">${b.qty.toLocaleString()}</div>
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+    }
+
+    function renderTradeOrderInfo() {
+        const st = stocks[selectedStockId];
+        const priceInput = Number(document.getElementById('inputOrderPrice').value) || st.price;
+
+        if (!currentAccountKey || !allAccounts[currentAccountKey]) {
+            document.getElementById('myCashText').textContent = '로그인 필요';
+            document.getElementById('myStockQtyText').textContent = '0주';
+            document.getElementById('myStockAvgText').textContent = '0원';
+            document.getElementById('myStockRateText').textContent = '0.00%';
+            document.getElementById('availQtyHint').textContent = '최대 가능: 0주';
+            return;
+        }
+
+        const acc = allAccounts[currentAccountKey];
+        const hold = acc.holdings[selectedStockId] || { qty: 0, avgPrice: 0 };
+
+        document.getElementById('myCashText').textContent = `${acc.cash.toLocaleString()}원`;
+        document.getElementById('myStockQtyText').textContent = `${hold.qty.toLocaleString()}주`;
+        document.getElementById('myStockAvgText').textContent = `${Math.round(hold.avgPrice).toLocaleString()}원`;
+
+        const rateEl = document.getElementById('myStockRateText');
+        if (hold.qty > 0 && hold.avgPrice > 0) {
+            const r = ((st.price - hold.avgPrice) / hold.avgPrice) * 100;
+            rateEl.textContent = `${r >= 0 ? '+' : ''}${r.toFixed(2)}%`;
+            rateEl.className = `font-extrabold ${r > 0 ? 'kr-up' : (r < 0 ? 'kr-down' : 'kr-flat')}`;
+        } else {
+            rateEl.textContent = '0.00%';
+            rateEl.className = 'font-extrabold kr-flat';
+        }
+
+        if (currentTradeSide === 'BUY') {
+            const maxBuy = Math.floor(acc.cash / Math.max(1, priceInput));
+            document.getElementById('availQtyHint').textContent = `최대 매수가능: ${maxBuy.toLocaleString()}주`;
+        } else {
+            document.getElementById('availQtyHint').textContent = `매도가능 보유: ${hold.qty.toLocaleString()}주`;
+        }
+    }
+
+    function refreshAllViews() {
+        renderNavbarAccount();
+        if (currentScreen === 'LOBBY') {
+            renderLeaderboard();
+            renderCompanyGrid();
+        } else {
+            renderTradeView();
+        }
+    }
+
+    /***********************************************************************
+     * 6. 사용자 인터랙션 함수 (window 전역 바인딩)
+     ***********************************************************************/
+    window.switchScreen = function(screen) {
+        currentScreen = screen;
+        const lobby = document.getElementById('lobbyScreen');
+        const trade = document.getElementById('tradeScreen');
+        const backBtn = document.getElementById('backLobbyBtn');
+
+        if (screen === 'LOBBY') {
+            lobby.classList.remove('hidden');
+            trade.classList.add('hidden');
+            backBtn.classList.add('hidden');
+            backBtn.classList.remove('flex');
+        } else {
+            lobby.classList.add('hidden');
+            trade.classList.remove('hidden');
+            backBtn.classList.remove('hidden');
+            backBtn.classList.add('flex');
+        }
+        refreshAllViews();
+    };
+
+    window.openCompanyTrade = function(stockId) {
+        selectedStockId = stockId;
+        const st = stocks[stockId];
+        document.getElementById('inputOrderPrice').value = st.price;
+        document.getElementById('inputOrderQty').value = 1;
+        window.calcOrderTotal();
+        window.switchScreen('TRADE');
+    };
+
+    window.selectTimeframe = function(tf) {
+        selectedTimeframe = tf;
+        TIMEFRAMES.forEach(item => {
+            const btn = document.getElementById(`tfBtn_${item}`);
+            if (item === tf) {
+                btn.className = 'px-2.5 py-1 rounded text-xs font-bold bg-blue-600 text-white transition';
+            } else {
+                btn.className = 'px-2.5 py-1 rounded text-xs font-bold text-slate-400 hover:text-white transition';
+            }
+        });
+        drawCandleChart();
+    };
+
+    window.setOrderPriceFromBook = function(price) {
+        document.getElementById('inputOrderPrice').value = price;
+        window.calcOrderTotal();
+    };
+
+    window.setTradeSide = function(side) {
+        currentTradeSide = side;
+        const buyBtn = document.getElementById('sideBtnBuy');
+        const sellBtn = document.getElementById('sideBtnSell');
+        const mainBtn = document.getElementById('mainOrderBtn');
+
+        if (side === 'BUY') {
+            buyBtn.className = 'py-2.5 rounded-lg font-extrabold text-xs bg-kr-up text-white transition';
+            sellBtn.className = 'py-2.5 rounded-lg font-extrabold text-xs text-slate-400 hover:text-white transition';
+            mainBtn.className = 'w-full py-3.5 rounded-xl bg-kr-up hover:opacity-95 text-white font-black text-sm shadow-lg transition';
+            mainBtn.textContent = '매수 주문 체결하기';
+        } else {
+            sellBtn.className = 'py-2.5 rounded-lg font-extrabold text-xs bg-kr-down text-white transition';
+            buyBtn.className = 'py-2.5 rounded-lg font-extrabold text-xs text-slate-400 hover:text-white transition';
+            mainBtn.className = 'w-full py-3.5 rounded-xl bg-kr-down hover:opacity-95 text-white font-black text-sm shadow-lg transition';
+            mainBtn.textContent = '매도 주문 체결하기';
+        }
+        renderTradeOrderInfo();
+    };
+
+    window.resetPriceToCurrent = function() {
+        document.getElementById('inputOrderPrice').value = stocks[selectedStockId].price;
+        window.calcOrderTotal();
+    };
+
+    window.stepOrderPrice = function(dir) {
+        const st = stocks[selectedStockId];
+        const cur = Number(document.getElementById('inputOrderPrice').value) || st.price;
+        const tick = getTickSize(cur);
+        const limits = getPriceLimits(st.prevClose);
+        let next = alignToTick(cur + dir * tick);
+        if (next > limits.upper) next = limits.upper;
+        if (next < limits.lower) next = limits.lower;
+        document.getElementById('inputOrderPrice').value = next;
+        window.calcOrderTotal();
+    };
+
+    window.stepOrderQty = function(dir) {
+        const cur = Number(document.getElementById('inputOrderQty').value) || 1;
+        document.getElementById('inputOrderQty').value = Math.max(1, cur + dir);
+        window.calcOrderTotal();
+    };
+
+    window.fillQtyByRatio = function(ratio) {
+        if (!currentAccountKey || !allAccounts[currentAccountKey]) {
+            showToast('먼저 로그인해 주세요!', 'error');
+            window.openAuthModal();
+            return;
+        }
+        const acc = allAccounts[currentAccountKey];
+        const price = Number(document.getElementById('inputOrderPrice').value) || stocks[selectedStockId].price;
+
+        if (currentTradeSide === 'BUY') {
+            const maxQty = Math.floor(acc.cash / Math.max(1, price));
+            document.getElementById('inputOrderQty').value = Math.max(1, Math.floor(maxQty * ratio));
+        } else {
+            const holdQty = acc.holdings[selectedStockId]?.qty || 0;
+            document.getElementById('inputOrderQty').value = Math.max(1, Math.floor(holdQty * ratio));
+        }
+        window.calcOrderTotal();
+    };
+
+    window.calcOrderTotal = function() {
+        const p = Number(document.getElementById('inputOrderPrice').value) || 0;
+        const q = Number(document.getElementById('inputOrderQty').value) || 0;
+        document.getElementById('orderTotalText').textContent = `${(p * q).toLocaleString()}원`;
+        renderTradeOrderInfo();
+    };
+
+    window.submitTradeOrder = async function() {
+        if (!currentAccountKey || !allAccounts[currentAccountKey]) {
+            showToast('거래하려면 먼저 로그인(또는 계정 생성)을 해주세요!', 'error');
+            window.openAuthModal();
+            return;
+        }
+
+        if (!isMarketOpenNow()) {
+            showToast('현재 장 마감 시간(00:00~05:59)입니다. 상단의 [야간 강제개장]을 켜거나 06:00 이후에 거래해 주세요.', 'error');
+            return;
+        }
+
+        const acc = allAccounts[currentAccountKey];
+        const st = stocks[selectedStockId];
+        const limits = getPriceLimits(st.prevClose);
+        const orderPrice = Number(document.getElementById('inputOrderPrice').value);
+        const orderQty = Number(document.getElementById('inputOrderQty').value);
+
+        if (orderQty <= 0 || orderPrice <= 0) {
+            showToast('올바른 주문 단가와 수량을 입력해 주세요.', 'error');
+            return;
+        }
+
+        if (orderPrice > limits.upper || orderPrice < limits.lower) {
+            showToast(`상한가(${limits.upper.toLocaleString()}원) ~ 하한가(${limits.lower.toLocaleString()}원) 범위 내에서만 주문할 수 있습니다.`, 'error');
+            return;
+        }
+
+        if (currentTradeSide === 'BUY') {
+            if (orderPrice < st.price) {
+                showToast(`즉시 체결을 위해 현재가(${st.price.toLocaleString()}원) 이상으로 단가를 입력해 주세요.`, 'error');
+                return;
+            }
+            const cost = st.price * orderQty;
+            if (acc.cash < cost) {
+                showToast('주문 가능 현금이 부족합니다!', 'error');
+                return;
+            }
+            acc.cash -= cost;
+            const prev = acc.holdings[selectedStockId] || { qty: 0, avgPrice: 0 };
+            const newQty = prev.qty + orderQty;
+            const newAvg = ((prev.qty * prev.avgPrice) + cost) / newQty;
+            acc.holdings[selectedStockId] = { qty: newQty, avgPrice: newAvg };
+
+            showToast(`[매수 체결] ${st.name} ${orderQty.toLocaleString()}주 (${st.price.toLocaleString()}원)`, 'buy');
+        } else {
+            if (orderPrice > st.price) {
+                showToast(`즉시 체결을 위해 현재가(${st.price.toLocaleString()}원) 이하로 단가를 입력해 주세요.`, 'error');
+                return;
+            }
+            const prev = acc.holdings[selectedStockId];
+            if (!prev || prev.qty < orderQty) {
+                showToast('매도할 보유 주식이 부족합니다!', 'error');
+                return;
+            }
+            acc.cash += st.price * orderQty;
+            prev.qty -= orderQty;
+            if (prev.qty === 0) prev.avgPrice = 0;
+
+            showToast(`[매도 체결] ${st.name} ${orderQty.toLocaleString()}주 (${st.price.toLocaleString()}원)`, 'sell');
+        }
+
+        refreshAllViews();
+        await saveAccountToCloud(currentAccountKey);
+    };
+
+    /***********************************************************************
+     * 7. 회원가입 / 로그인 모달 및 코드 개정(업데이트 배포) 기능
+     ***********************************************************************/
+    window.openAuthModal = function() {
+        renderQuickUserButtons();
+        const modal = document.getElementById('authModal');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    };
+
+    window.closeAuthModal = function() {
+        const modal = document.getElementById('authModal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    };
+
+    function renderQuickUserButtons() {
+        const container = document.getElementById('registeredUsersQuickList');
+        const names = Object.keys(allAccounts);
+        if (names.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+        container.innerHTML = `
+            <div class="text-[11px] text-slate-400">현재 등록된 참가자 (클릭 시 닉네임 자동입력):</div>
+            <div class="flex flex-wrap gap-1.5">
+                ${names.map(n => `
+                    <button onclick="document.getElementById('authNickname').value='${n}'" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700">
+                        ${n}
+                    </button>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    window.handleLoginOrRegister = async function() {
+        const nickname = document.getElementById('authNickname').value.trim();
+        const password = document.getElementById('authPassword').value.trim();
+
+        if (!nickname) {
+            showToast('닉네임을 입력해 주세요! (예: 나, 아빠)', 'error');
+            return;
+        }
+        if (!password) {
+            showToast('비밀번호를 입력해 주세요!', 'error');
+            return;
+        }
+
+        const existing = allAccounts[nickname];
+        if (existing) {
+            if (existing.password !== password) {
+                showToast('비밀번호가 일치하지 않습니다!', 'error');
+                return;
+            }
+            currentAccountKey = nickname;
+            showToast(`반갑습니다, [${nickname}]님! 저장된 계좌를 불러왔습니다.`, 'info');
+        } else {
+            // 신규 계정 생성
+            allAccounts[nickname] = {
+                nickname,
+                password,
+                cash: INITIAL_CASH,
+                holdings: {}
+            };
+            currentAccountKey = nickname;
+            await saveAccountToCloud(nickname);
+            showToast(`[${nickname}] 새 계정이 생성되었습니다! (초기자금 5,000만 원 지급)`, 'buy');
+        }
+
+        window.closeAuthModal();
+        refreshAllViews();
+    };
+
+    window.toggleNightMarket = function(checked) {
+        nightMarketOverride = checked;
+        updateClockAndMarketStatus();
+        showToast(checked ? '야간 강제개장 모드가 켜졌습니다.' : '기본 거래시간(06:00~23:59) 모드로 전환되었습니다.', 'info');
+    };
+
+    window.openBroadcastModal = function() {
+        const modal = document.getElementById('broadcastModal');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    };
+
+    window.closeBroadcastModal = function() {
+        const modal = document.getElementById('broadcastModal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    };
+
+    window.triggerBroadcastUpdate = async function() {
+        const note = document.getElementById('updateNoteInput').value.trim() || '새로운 버전 업데이트';
+        const nextVer = (localSystemVersion || 1) + 1;
+        localSystemVersion = nextVer;
+
+        if (isFirebaseReady && auth.currentUser) {
+            try {
+                const configRef = doc(db, 'artifacts', appId, 'public', 'data', 'system', 'config');
+                await setDoc(configRef, {
+                    version: nextVer,
+                    note: note,
+                    updatedAt: Date.now()
+                });
+                showToast(`v${nextVer} 업데이트 알림이 모든 참가자 화면에 발송되었습니다!`, 'buy');
+            } catch (e) {
+                showToast('업데이트 알림 발송 중 오류가 발생했습니다.', 'error');
+            }
+        } else {
+            // 로컬 테스트용 배너 즉시 표시
+            document.getElementById('newVerText').textContent = `v${nextVer} - ${note}`;
+            const banner = document.getElementById('updateBanner');
+            banner.classList.remove('hidden');
+            banner.classList.add('flex');
+        }
+        window.closeBroadcastModal();
+    };
+
+    window.applySystemUpdate = function() {
+        window.location.reload();
+    };
+
+    function showToast(msg, type = 'info') {
+        const wrap = document.getElementById('toastWrap');
+        const el = document.createElement('div');
+        let style = 'bg-slate-900 border-slate-700 text-white';
+        if (type === 'buy') style = 'bg-[#241217] border-red-500/60 text-red-100';
+        if (type === 'sell') style = 'bg-[#111a2e] border-blue-500/60 text-blue-100';
+        if (type === 'error') style = 'bg-amber-950 border-amber-500/70 text-amber-100';
+
+        el.className = `px-4 py-3 rounded-xl border shadow-2xl text-xs font-bold transition-all duration-300 ${style}`;
+        el.textContent = msg;
+        wrap.appendChild(el);
+        setTimeout(() => {
+            el.classList.add('opacity-0', 'translate-y-2');
+            setTimeout(() => el.remove(), 300);
+        }, 2800);
+    }
+
+    // 창 리사이즈 시 차트 재드로잉
+    window.addEventListener('resize', () => {
+        if (currentScreen === 'TRADE') drawCandleChart();
+    });
+
+    // 앱 시작
+    window.onload = async function() {
+        initLocalStockState();
+        updateClockAndMarketStatus();
+        refreshAllViews();
+        await initCloudDatabase();
+        setInterval(stepMarketSimulation, 1000);
+    };
+</script>
+</body>
+</html>
+
